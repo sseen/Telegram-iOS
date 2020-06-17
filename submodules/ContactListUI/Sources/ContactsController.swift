@@ -105,7 +105,12 @@ public class ContactsController: ViewController {
         self.title = self.presentationData.strings.Contacts_Title
         self.tabBarItem.title = self.presentationData.strings.Contacts_Title
         
-        let icon = UIImage(bundleImageName: "Chat List/Tabs/IconContacts")
+        let icon: UIImage?
+        if useSpecialTabBarIcons() {
+            icon = UIImage(bundleImageName: "Chat List/Tabs/Holiday/IconContacts")
+        } else {
+            icon = UIImage(bundleImageName: "Chat List/Tabs/IconContacts")
+        }
         
         self.tabBarItem.image = icon
         self.tabBarItem.selectedImage = icon
@@ -221,7 +226,7 @@ public class ContactsController: ViewController {
                                     self?.deactivateSearch(animated: false)
                                     self?.switchToChatsController?()
                                 }
-                                }, scrollToEndIfExists: scrollToEndIfExists, options: [.removeOnMasterDetails], completion: { [weak self] in
+                                }, scrollToEndIfExists: scrollToEndIfExists, options: [.removeOnMasterDetails], completion: { [weak self] _ in
                                 if let strongSelf = self {
                                     strongSelf.contactsNode.contactListNode.listNode.clearHighlightAnimated(true)
                                 }
@@ -530,8 +535,10 @@ public class ContactsController: ViewController {
                             return
                         }
                         if let peer = peer {
-                            if let infoController = strongSelf.context.sharedContext.makePeerInfoController(context: strongSelf.context, peer: peer, mode: .generic) {
-                                (strongSelf.navigationController as? NavigationController)?.pushViewController(infoController)
+                            DispatchQueue.main.async {
+                                if let infoController = strongSelf.context.sharedContext.makePeerInfoController(context: strongSelf.context, peer: peer, mode: .generic, avatarInitiallyExpanded: false, fromChat: false) {
+                                    (strongSelf.navigationController as? NavigationController)?.pushViewController(infoController)
+                                }
                             }
                         } else {
                             (strongSelf.navigationController as? NavigationController)?.pushViewController(strongSelf.context.sharedContext.makeDeviceContactInfoController(context: strongSelf.context, subject: .vcard(nil, stableId, contactData), completed: nil, cancelled: nil))

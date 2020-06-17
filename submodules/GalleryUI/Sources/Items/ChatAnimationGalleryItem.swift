@@ -15,6 +15,10 @@ import StickerResources
 import AppBundle
 
 class ChatAnimationGalleryItem: GalleryItem {
+    var id: AnyHashable {
+        return self.message.stableId
+    }
+    
     let context: AccountContext
     let presentationData: PresentationData
     let message: Message
@@ -325,8 +329,8 @@ final class ChatAnimationGalleryItemNode: ZoomableContentGalleryItemNode {
         return self._rightBarButtonItems.get()
     }
     
-    override func footerContent() -> Signal<GalleryFooterContentNode?, NoError> {
-        return .single(self.footerContentNode)
+    override func footerContent() -> Signal<(GalleryFooterContentNode?, GalleryOverlayContentNode?), NoError> {
+        return .single((self.footerContentNode, nil))
     }
     
     @objc func statusPressed() {

@@ -6,7 +6,7 @@ import MtProtoKit
 
 import SyncCore
 
-private func messageFilterForTagMask(_ tagMask: MessageTags) -> Api.MessagesFilter? {
+func messageFilterForTagMask(_ tagMask: MessageTags) -> Api.MessagesFilter? {
     if tagMask == .photoOrVideo {
         return Api.MessagesFilter.inputMessagesFilterPhotoVideo
     } else if tagMask == .file {
@@ -17,6 +17,8 @@ private func messageFilterForTagMask(_ tagMask: MessageTags) -> Api.MessagesFilt
         return Api.MessagesFilter.inputMessagesFilterUrl
     } else if tagMask == .voiceOrInstantVideo {
         return Api.MessagesFilter.inputMessagesFilterRoundVoice
+    } else if tagMask == .gif {
+        return Api.MessagesFilter.inputMessagesFilterGif
     } else {
         return nil
     }
@@ -366,7 +368,23 @@ func fetchMessageHistoryHole(accountPeerId: PeerId, source: FetchMessageHistoryH
                         let _ = transaction.addMessages(storeMessages, location: .Random)
                         let _ = transaction.addMessages(additionalMessages, location: .Random)
                         let filledRange: ClosedRange<MessageId.Id>
-                        let ids = messages.compactMap({ $0.id()?.id })
+                        let ids = storeMessages.compactMap { message -> MessageId.Id? in
+                            switch message.id {
+                            case let .Id(id):
+                                switch space {
+                                case let .tag(tag):
+                                    if !message.tags.contains(tag) {
+                                        return nil
+                                    } else {
+                                        return id.id
+                                    }
+                                case .everywhere:
+                                    return id.id
+                                }
+                            case .Partial:
+                                return nil
+                            }
+                        }
                         if ids.count == 0 || implicitelyFillHole {
                             filledRange = minMaxRange
                         } else {
@@ -463,15 +481,11 @@ func fetchChatListHole(postbox: Postbox, network: Network, accountPeerId: PeerId
                 }
             }
             
-            for (peerId, chatState) in fetchedChats.chatStates {
-                if let chatState = chatState as? ChannelState {
-                    if let current = transaction.getPeerChatState(peerId) as? ChannelState {
-                        transaction.setPeerChatState(peerId, state: current.withUpdatedPts(chatState.pts))
-                    } else {
-                        transaction.setPeerChatState(peerId, state: chatState)
-                    }
+            for (peerId, pts) in fetchedChats.channelStates {
+                if let current = transaction.getPeerChatState(peerId) as? ChannelState {
+                    transaction.setPeerChatState(peerId, state: current.withUpdatedPts(pts))
                 } else {
-                    transaction.setPeerChatState(peerId, state: chatState)
+                    transaction.setPeerChatState(peerId, state: ChannelState(pts: pts, invalidatedPts: nil, synchronizedUntilMessageId: nil))
                 }
             }
             

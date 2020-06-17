@@ -10,6 +10,7 @@ import TelegramPresentationData
 import AnimationUI
 import AppBundle
 import AccountContext
+import Emoji
 
 private let deletedIcon = UIImage(bundleImageName: "Avatar/DeletedIcon")?.precomposed()
 private let savedMessagesIcon = generateTintedImage(image: UIImage(bundleImageName: "Avatar/SavedMessagesIcon"), color: .white)
@@ -150,8 +151,14 @@ public final class AvatarEditOverlayNode: ASDisplayNode {
         
         context.setBlendMode(.normal)
         
-        if let editAvatarIcon = generateTintedImage(image: UIImage(bundleImageName: "Avatar/EditAvatarIcon"), color: .white) {
-            context.draw(editAvatarIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - editAvatarIcon.size.width) / 2.0) + 0.5, y: floor((bounds.size.height - editAvatarIcon.size.height) / 2.0) + 1.0), size: editAvatarIcon.size))
+        if bounds.width > 90.0 {
+            if let editAvatarIcon = generateTintedImage(image: UIImage(bundleImageName: "Avatar/EditAvatarIconLarge"), color: .white) {
+                context.draw(editAvatarIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - editAvatarIcon.size.width) / 2.0) + 0.5, y: floor((bounds.size.height - editAvatarIcon.size.height) / 2.0) + 1.0), size: editAvatarIcon.size))
+            }
+        } else {
+            if let editAvatarIcon = generateTintedImage(image: UIImage(bundleImageName: "Avatar/EditAvatarIcon"), color: .white) {
+                context.draw(editAvatarIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - editAvatarIcon.size.width) / 2.0) + 0.5, y: floor((bounds.size.height - editAvatarIcon.size.height) / 2.0) + 1.0), size: editAvatarIcon.size))
+            }
         }
     }
 }
@@ -190,6 +197,8 @@ public final class AvatarNode: ASDisplayNode {
     
     private let imageReadyDisposable = MetaDisposable()
     private var state: AvatarNodeState = .empty
+    
+    public var unroundedImage: UIImage?
     
     private let imageReady = Promise<Bool>(false)
     public var ready: Signal<Void, NoError> {
@@ -283,7 +292,7 @@ public final class AvatarNode: ASDisplayNode {
         self.imageNode.isHidden = true
     }
     
-    public func setPeer(context: AccountContext, theme: PresentationTheme, peer: Peer?, authorOfMessage: MessageReference? = nil, overrideImage: AvatarNodeImageOverride? = nil, emptyColor: UIColor? = nil, clipStyle: AvatarNodeClipStyle = .round, synchronousLoad: Bool = false, displayDimensions: CGSize = CGSize(width: 60.0, height: 60.0)) {
+    public func setPeer(context: AccountContext, theme: PresentationTheme, peer: Peer?, authorOfMessage: MessageReference? = nil, overrideImage: AvatarNodeImageOverride? = nil, emptyColor: UIColor? = nil, clipStyle: AvatarNodeClipStyle = .round, synchronousLoad: Bool = false, displayDimensions: CGSize = CGSize(width: 60.0, height: 60.0), storeUnrounded: Bool = false) {
         var synchronousLoad = synchronousLoad
         var representation: TelegramMediaImageRepresentation?
         var icon = AvatarNodeIcon.none
@@ -318,11 +327,18 @@ public final class AvatarNode: ASDisplayNode {
             
             let parameters: AvatarNodeParameters
             
-            if let peer = peer, let signal = peerAvatarImage(account: context.account, peerReference: PeerReference(peer), authorOfMessage: authorOfMessage, representation: representation, displayDimensions: displayDimensions, emptyColor: emptyColor, synchronousLoad: synchronousLoad) {
+            if let peer = peer, let signal = peerAvatarImage(account: context.account, peerReference: PeerReference(peer), authorOfMessage: authorOfMessage, representation: representation, displayDimensions: displayDimensions, emptyColor: emptyColor, synchronousLoad: synchronousLoad, provideUnrounded: storeUnrounded) {
                 self.contents = nil
                 self.displaySuspended = true
-                self.imageReady.set(self.imageNode.ready)
-                self.imageNode.setSignal(signal)
+                self.imageReady.set(self.imageNode.contentReady)
+                self.imageNode.setSignal(signal |> beforeNext { [weak self] next in
+                    Queue.mainQueue().async {
+                        self?.unroundedImage = next?.1
+                    }
+                }
+                |> map { next -> UIImage? in
+                    return next?.0
+                })
                 
                 if case .editAvatarIcon = icon {
                     if self.editOverlayNode == nil {
@@ -412,7 +428,7 @@ public final class AvatarNode: ASDisplayNode {
             if let explicitColorIndex = parameters.explicitColorIndex {
                 colorIndex = explicitColorIndex
             } else {
-                if let accountPeerId = parameters.accountPeerId, let peerId = parameters.peerId {
+                if let peerId = parameters.peerId {
                     if peerId.namespace == -1 {
                         colorIndex = -1
                     } else {
@@ -434,7 +450,7 @@ public final class AvatarNode: ASDisplayNode {
             } else if case .savedMessagesIcon = parameters.icon {
                 colorsArray = savedMessagesColors
             } else if case .editAvatarIcon = parameters.icon, let theme = parameters.theme {
-                colorsArray = [theme.list.blocksBackgroundColor.cgColor, theme.list.blocksBackgroundColor.cgColor]
+                colorsArray = [theme.list.itemAccentColor.withAlphaComponent(0.1).cgColor, theme.list.itemAccentColor.withAlphaComponent(0.1).cgColor]
             } else if case let .archivedChatsIcon(hiddenByDefault) = parameters.icon, let theme = parameters.theme {
                 let backgroundColors: (UIColor, UIColor)
                 if hiddenByDefault {
@@ -492,7 +508,9 @@ public final class AvatarNode: ASDisplayNode {
                 context.scaleBy(x: 1.0, y: -1.0)
                 context.translateBy(x: -bounds.size.width / 2.0, y: -bounds.size.height / 2.0)
                 
-                if let editAvatarIcon = generateTintedImage(image: UIImage(bundleImageName: "Avatar/EditAvatarIcon"), color: theme.list.itemAccentColor) {
+                if bounds.width > 90.0, let editAvatarIcon = generateTintedImage(image: UIImage(bundleImageName: "Avatar/EditAvatarIconLarge"), color: theme.list.itemAccentColor) {
+                    context.draw(editAvatarIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - editAvatarIcon.size.width) / 2.0) + 0.5, y: floor((bounds.size.height - editAvatarIcon.size.height) / 2.0) + 1.0), size: editAvatarIcon.size))
+                } else if let editAvatarIcon = generateTintedImage(image: UIImage(bundleImageName: "Avatar/EditAvatarIcon"), color: theme.list.itemAccentColor) {
                     context.draw(editAvatarIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - editAvatarIcon.size.width) / 2.0) + 0.5, y: floor((bounds.size.height - editAvatarIcon.size.height) / 2.0) + 1.0), size: editAvatarIcon.size))
                 }
             } else if case .archivedChatsIcon = parameters.icon {
@@ -505,7 +523,11 @@ public final class AvatarNode: ASDisplayNode {
                     context.draw(archivedChatsIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - archivedChatsIcon.size.width) / 2.0), y: floor((bounds.size.height - archivedChatsIcon.size.height) / 2.0)), size: archivedChatsIcon.size))
                 }
             } else {
-                let letters = parameters.letters
+                var letters = parameters.letters
+                if letters.count == 2 && letters[0].isSingleEmoji && letters[1].isSingleEmoji {
+                    letters = [letters[0]]
+                }
+                
                 let string = letters.count == 0 ? "" : (letters[0] + (letters.count == 1 ? "" : letters[1]))
                 let attributedString = NSAttributedString(string: string, attributes: [NSAttributedString.Key.font: parameters.font, NSAttributedString.Key.foregroundColor: UIColor.white])
                 
@@ -604,4 +626,66 @@ public func drawPeerAvatarLetters(context: CGContext, size: CGSize, font: UIFont
     CTLineDraw(line, context)
     context.translateBy(x: -lineOrigin.x, y: -lineOrigin.y)
     context.textPosition = textPosition
+}
+
+public enum AvatarBackgroundColor {
+    case blue
+    case yellow
+    case green
+    case purple
+    case red
+    case violet
+}
+
+public func generateAvatarImage(size: CGSize, icon: UIImage?, color: AvatarBackgroundColor) -> UIImage? {
+    return generateImage(size, rotatedContext: { size, context in
+        context.clear(CGRect(origin: CGPoint(), size: size))
+        context.beginPath()
+        context.addEllipse(in: CGRect(x: 0.0, y: 0.0, width: size.width, height:
+            size.height))
+        context.clip()
+        
+        let colorIndex: Int
+        switch color {
+        case .blue:
+            colorIndex = 5
+        case .yellow:
+            colorIndex = 1
+        case .green:
+            colorIndex = 3
+        case .purple:
+            colorIndex = 2
+        case .red:
+            colorIndex = 0
+        case .violet:
+            colorIndex = 6
+        }
+        
+        let colorsArray: NSArray
+        if colorIndex == -1 {
+            colorsArray = grayscaleColors
+        } else {
+            colorsArray = AvatarNode.gradientColors[colorIndex % AvatarNode.gradientColors.count]
+        }
+        
+        var locations: [CGFloat] = [1.0, 0.0]
+        
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let gradient = CGGradient(colorsSpace: colorSpace, colors: colorsArray, locations: &locations)!
+        
+        context.drawLinearGradient(gradient, start: CGPoint(), end: CGPoint(x: 0.0, y: size.height), options: CGGradientDrawingOptions())
+        
+        context.resetClip()
+        
+        context.setBlendMode(.normal)
+        
+        context.translateBy(x: size.width / 2.0, y: size.height / 2.0)
+        context.scaleBy(x: 1.0, y: -1.0)
+        context.translateBy(x: -size.width / 2.0, y: -size.height / 2.0)
+        
+        if let icon = icon {
+            let iconFrame = CGRect(origin: CGPoint(x: floor((size.width - icon.size.width) / 2.0), y: floor((size.height - icon.size.height) / 2.0)), size: icon.size)
+            context.draw(icon.cgImage!, in: iconFrame)
+        }
+    })
 }

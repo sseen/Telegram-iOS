@@ -20,6 +20,7 @@ public enum PresentationResourceKey: Int32 {
     case navigationShareIcon
     case navigationSearchIcon
     case navigationCompactSearchIcon
+    case navigationMoreIcon
     case navigationAddIcon
     case navigationPlayerCloseButton
     
@@ -48,6 +49,8 @@ public enum PresentationResourceKey: Int32 {
     case itemListVerifiedPeerIcon
     case itemListCloudFetchIcon
     case itemListCloseIconImage
+    case itemListMakeVisibleIcon
+    case itemListMakeInvisibleIcon
     case itemListCornersTop
     case itemListCornersBottom
     case itemListCornersBoth
@@ -124,8 +127,11 @@ public enum PresentationResourceKey: Int32 {
     case chatInputMediaPanelTrendingIconImage
     case chatInputMediaPanelSettingsIconImage
     case chatInputMediaPanelAddPackButtonImage
+    case chatInputMediaPanelAddedPackButtonImage
     case chatInputMediaPanelGridSetupImage
     case chatInputMediaPanelGridDismissImage
+    case chatInputMediaPanelTrendingGifsIcon
+    case chatInputMediaPanelStickersModeIcon
     
     case chatInputButtonPanelButtonImage
     case chatInputButtonPanelButtonHighlightedImage
@@ -233,4 +239,11 @@ public enum PresentationResourceParameterKey: Hashable {
     
     case chatPrincipalThemeEssentialGraphics(hasWallpaper: Bool, bubbleCorners: PresentationChatBubbleCorners)
     case chatPrincipalThemeAdditionalGraphics(isCustomWallpaper: Bool, bubbleCorners: PresentationChatBubbleCorners)
+    
+    case chatBubbleLamp(incoming: Bool)
+    case chatPsaInfo(color: UInt32)
+    
+    case chatMessageLike(incoming: Bool, isSelected: Bool)
+    case chatMessageFreeLike(isSelected: Bool)
+    case chatMessageMediaLike(isSelected: Bool)
 }

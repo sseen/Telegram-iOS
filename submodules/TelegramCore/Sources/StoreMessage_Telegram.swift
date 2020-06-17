@@ -63,7 +63,7 @@ public func tagsForStoreMessage(incoming: Bool, attributes: [MessageAttribute], 
                 }
             }
             if isAnimated {
-                refinedTag = nil
+                refinedTag = .gif
             }
             if file.isAnimatedSticker {
                 refinedTag = nil
@@ -277,71 +277,73 @@ func apiMessageAssociatedMessageIds(_ message: Api.Message) -> [MessageId]? {
 func textMediaAndExpirationTimerFromApiMedia(_ media: Api.MessageMedia?, _ peerId:PeerId) -> (Media?, Int32?) {
     if let media = media {
         switch media {
-            case let .messageMediaPhoto(_, photo, ttlSeconds):
-                if let photo = photo {
-                    if let mediaImage = telegramMediaImageFromApiPhoto(photo) {
-                        return (mediaImage, ttlSeconds)
-                    }
-                } else {
-                    return (TelegramMediaExpiredContent(data: .image), nil)
+        case let .messageMediaPhoto(_, photo, ttlSeconds):
+            if let photo = photo {
+                if let mediaImage = telegramMediaImageFromApiPhoto(photo) {
+                    return (mediaImage, ttlSeconds)
                 }
-            case let .messageMediaContact(phoneNumber, firstName, lastName, vcard, userId):
-                let contactPeerId: PeerId? = userId == 0 ? nil : PeerId(namespace: Namespaces.Peer.CloudUser, id: userId)
-                let mediaContact = TelegramMediaContact(firstName: firstName, lastName: lastName, phoneNumber: phoneNumber, peerId: contactPeerId, vCardData: vcard.isEmpty ? nil : vcard)
-                return (mediaContact, nil)
-            case let .messageMediaGeo(geo):
-                let mediaMap = telegramMediaMapFromApiGeoPoint(geo, title: nil, address: nil, provider: nil, venueId: nil, venueType: nil, liveBroadcastingTimeout: nil)
-                return (mediaMap, nil)
-            case let .messageMediaVenue(geo, title, address, provider, venueId, venueType):
-                let mediaMap = telegramMediaMapFromApiGeoPoint(geo, title: title, address: address, provider: provider, venueId: venueId, venueType: venueType, liveBroadcastingTimeout: nil)
-                return (mediaMap, nil)
-            case let .messageMediaGeoLive(geo, period):
-                let mediaMap = telegramMediaMapFromApiGeoPoint(geo, title: nil, address: nil, provider: nil, venueId: nil, venueType: nil, liveBroadcastingTimeout: period)
-                return (mediaMap, nil)
-            case let .messageMediaDocument(_, document, ttlSeconds):
-                if let document = document {
-                    if let mediaFile = telegramMediaFileFromApiDocument(document) {
-                        return (mediaFile, ttlSeconds)
-                    }
-                } else {
-                    return (TelegramMediaExpiredContent(data: .file), nil)
+            } else {
+                return (TelegramMediaExpiredContent(data: .image), nil)
+            }
+        case let .messageMediaContact(phoneNumber, firstName, lastName, vcard, userId):
+            let contactPeerId: PeerId? = userId == 0 ? nil : PeerId(namespace: Namespaces.Peer.CloudUser, id: userId)
+            let mediaContact = TelegramMediaContact(firstName: firstName, lastName: lastName, phoneNumber: phoneNumber, peerId: contactPeerId, vCardData: vcard.isEmpty ? nil : vcard)
+            return (mediaContact, nil)
+        case let .messageMediaGeo(geo):
+            let mediaMap = telegramMediaMapFromApiGeoPoint(geo, title: nil, address: nil, provider: nil, venueId: nil, venueType: nil, liveBroadcastingTimeout: nil)
+            return (mediaMap, nil)
+        case let .messageMediaVenue(geo, title, address, provider, venueId, venueType):
+            let mediaMap = telegramMediaMapFromApiGeoPoint(geo, title: title, address: address, provider: provider, venueId: venueId, venueType: venueType, liveBroadcastingTimeout: nil)
+            return (mediaMap, nil)
+        case let .messageMediaGeoLive(geo, period):
+            let mediaMap = telegramMediaMapFromApiGeoPoint(geo, title: nil, address: nil, provider: nil, venueId: nil, venueType: nil, liveBroadcastingTimeout: period)
+            return (mediaMap, nil)
+        case let .messageMediaDocument(_, document, ttlSeconds):
+            if let document = document {
+                if let mediaFile = telegramMediaFileFromApiDocument(document) {
+                    return (mediaFile, ttlSeconds)
                 }
-            case let .messageMediaWebPage(webpage):
-                if let mediaWebpage = telegramMediaWebpageFromApiWebpage(webpage, url: nil) {
-                    return (mediaWebpage, nil)
-                }
-            case .messageMediaUnsupported:
-                return (TelegramMediaUnsupported(), nil)
-            case .messageMediaEmpty:
-                break
-            case let .messageMediaGame(game):
-                return (TelegramMediaGame(apiGame: game), nil)
-            case let .messageMediaInvoice(flags, title, description, photo, receiptMsgId, currency, totalAmount, startParam):
-                var parsedFlags = TelegramMediaInvoiceFlags()
-                if (flags & (1 << 3)) != 0 {
-                    parsedFlags.insert(.isTest)
-                }
+            } else {
+                return (TelegramMediaExpiredContent(data: .file), nil)
+            }
+        case let .messageMediaWebPage(webpage):
+            if let mediaWebpage = telegramMediaWebpageFromApiWebpage(webpage, url: nil) {
+                return (mediaWebpage, nil)
+            }
+        case .messageMediaUnsupported:
+            return (TelegramMediaUnsupported(), nil)
+        case .messageMediaEmpty:
+            break
+        case let .messageMediaGame(game):
+            return (TelegramMediaGame(apiGame: game), nil)
+        case let .messageMediaInvoice(flags, title, description, photo, receiptMsgId, currency, totalAmount, startParam):
+            var parsedFlags = TelegramMediaInvoiceFlags()
+            if (flags & (1 << 3)) != 0 {
+                parsedFlags.insert(.isTest)
+            }
+            if (flags & (1 << 1)) != 0 {
+                parsedFlags.insert(.shippingAddressRequested)
+            }
+            return (TelegramMediaInvoice(title: title, description: description, photo: photo.flatMap(TelegramMediaWebFile.init), receiptMessageId: receiptMsgId.flatMap { MessageId(peerId: peerId, namespace: Namespaces.Message.Cloud, id: $0) }, currency: currency, totalAmount: totalAmount, startParam: startParam, flags: parsedFlags), nil)
+        case let .messageMediaPoll(poll, results):
+            switch poll {
+            case let .poll(id, flags, question, answers, closePeriod, _):
+                let publicity: TelegramMediaPollPublicity
                 if (flags & (1 << 1)) != 0 {
-                    parsedFlags.insert(.shippingAddressRequested)
+                    publicity = .public
+                } else {
+                    publicity = .anonymous
                 }
-                return (TelegramMediaInvoice(title: title, description: description, photo: photo.flatMap(TelegramMediaWebFile.init), receiptMessageId: receiptMsgId.flatMap { MessageId(peerId: peerId, namespace: Namespaces.Message.Cloud, id: $0) }, currency: currency, totalAmount: totalAmount, startParam: startParam, flags: parsedFlags), nil)
-            case let .messageMediaPoll(poll, results):
-                switch poll {
-                    case let .poll(id, flags, question, answers):
-                        let publicity: TelegramMediaPollPublicity
-                        if (flags & (1 << 1)) != 0 {
-                            publicity = .public
-                        } else {
-                            publicity = .anonymous
-                        }
-                        let kind: TelegramMediaPollKind
-                        if (flags & (1 << 3)) != 0 {
-                            kind = .quiz
-                        } else {
-                            kind = .poll(multipleAnswers: (flags & (1 << 2)) != 0)
-                        }
-                        return (TelegramMediaPoll(pollId: MediaId(namespace: Namespaces.Media.CloudPoll, id: id), publicity: publicity, kind: kind, text: question, options: answers.map(TelegramMediaPollOption.init(apiOption:)), correctAnswers: nil, results: TelegramMediaPollResults(apiResults: results), isClosed: (flags & (1 << 0)) != 0), nil)
+                let kind: TelegramMediaPollKind
+                if (flags & (1 << 3)) != 0 {
+                    kind = .quiz
+                } else {
+                    kind = .poll(multipleAnswers: (flags & (1 << 2)) != 0)
                 }
+                return (TelegramMediaPoll(pollId: MediaId(namespace: Namespaces.Media.CloudPoll, id: id), publicity: publicity, kind: kind, text: question, options: answers.map(TelegramMediaPollOption.init(apiOption:)), correctAnswers: nil, results: TelegramMediaPollResults(apiResults: results), isClosed: (flags & (1 << 0)) != 0, deadlineTimeout: closePeriod), nil)
+            }
+        case let .messageMediaDice(value, emoticon):
+            return (TelegramMediaDice(emoji: emoticon, value: value), nil)
         }
     }
     
@@ -386,6 +388,8 @@ func messageTextEntitiesFromApiEntities(_ entities: [Api.MessageEntity]) -> [Mes
                 result.append(MessageTextEntity(range: Int(offset) ..< Int(offset + length), type: .Strikethrough))
             case let .messageEntityBlockquote(offset, length):
                 result.append(MessageTextEntity(range: Int(offset) ..< Int(offset + length), type: .BlockQuote))
+            case let .messageEntityBankCard(offset, length):
+                result.append(MessageTextEntity(range: Int(offset) ..< Int(offset + length), type: .BankCard))
         }
     }
     return result
@@ -426,7 +430,7 @@ extension StoreMessage {
                 var forwardInfo: StoreMessageForwardInfo?
                 if let fwdFrom = fwdFrom {
                     switch fwdFrom {
-                        case let .messageFwdHeader(_, fromId, fromName, date, channelId, channelPost, postAuthor, savedFromPeer, savedFromMsgId):
+                        case let .messageFwdHeader(_, fromId, fromName, date, channelId, channelPost, postAuthor, savedFromPeer, savedFromMsgId, psaType):
                             var authorId: PeerId?
                             var sourceId: PeerId?
                             var sourceMessageId: MessageId?
@@ -458,11 +462,11 @@ extension StoreMessage {
                             }
                         
                             if let authorId = authorId {
-                                forwardInfo = StoreMessageForwardInfo(authorId: authorId, sourceId: sourceId, sourceMessageId: sourceMessageId, date: date, authorSignature: postAuthor)
+                                forwardInfo = StoreMessageForwardInfo(authorId: authorId, sourceId: sourceId, sourceMessageId: sourceMessageId, date: date, authorSignature: postAuthor, psaType: psaType)
                             } else if let sourceId = sourceId {
-                                forwardInfo = StoreMessageForwardInfo(authorId: sourceId, sourceId: sourceId, sourceMessageId: sourceMessageId, date: date, authorSignature: postAuthor)
+                                forwardInfo = StoreMessageForwardInfo(authorId: sourceId, sourceId: sourceId, sourceMessageId: sourceMessageId, date: date, authorSignature: postAuthor, psaType: psaType)
                             } else if let postAuthor = postAuthor ?? fromName {
-                                forwardInfo = StoreMessageForwardInfo(authorId: nil, sourceId: nil, sourceMessageId: sourceMessageId, date: date, authorSignature: postAuthor)
+                                forwardInfo = StoreMessageForwardInfo(authorId: nil, sourceId: nil, sourceMessageId: sourceMessageId, date: date, authorSignature: postAuthor, psaType: psaType)
                             }
                     }
                 }

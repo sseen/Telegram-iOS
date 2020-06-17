@@ -43,6 +43,7 @@ public struct Namespaces {
         public static let CloudMaskPacks: Int32 = 1
         public static let EmojiKeywords: Int32 = 2
         public static let CloudAnimatedEmoji: Int32 = 3
+        public static let CloudDice: Int32 = 4
     }
     
     public struct OrderedItemList {
@@ -69,6 +70,7 @@ public struct Namespaces {
         public static let cachedWallpapersConfiguration: Int8 = 7
         public static let cachedThemesConfiguration: Int8 = 8
         public static let cachedPollResults: Int8 = 9
+        public static let cachedContextResults: Int8 = 10
     }
     
     public struct UnorderedItemList {
@@ -92,8 +94,9 @@ public extension MessageTags {
     static let voiceOrInstantVideo = MessageTags(rawValue: 1 << 4)
     static let unseenPersonalMessage = MessageTags(rawValue: 1 << 5)
     static let liveLocation = MessageTags(rawValue: 1 << 6)
+    static let gif = MessageTags(rawValue: 1 << 7)
     
-    static let all: MessageTags = [.photoOrVideo, .file, .music, .webPage, .voiceOrInstantVideo, .unseenPersonalMessage, .liveLocation]
+    static let all: MessageTags = [.photoOrVideo, .file, .music, .webPage, .voiceOrInstantVideo, .unseenPersonalMessage, .liveLocation, .gif]
 }
 
 public extension GlobalMessageTags {
@@ -137,6 +140,7 @@ public struct OperationLogTags {
     public static let SynchronizeRecentlyUsedStickers = PeerOperationLogTag(value: 17)
     public static let SynchronizeAppLogEvents = PeerOperationLogTag(value: 18)
     public static let SynchronizeEmojiKeywords = PeerOperationLogTag(value: 19)
+    public static let SynchronizeChatListFilters = PeerOperationLogTag(value: 20)
 }
 
 public struct LegacyPeerSummaryCounterTags: OptionSet, Sequence, Hashable {
@@ -171,12 +175,19 @@ public struct LegacyPeerSummaryCounterTags: OptionSet, Sequence, Hashable {
 }
 
 public extension PeerSummaryCounterTags {
-    static let privateChat = PeerSummaryCounterTags(rawValue: 1 << 3)
-    static let secretChat = PeerSummaryCounterTags(rawValue: 1 << 4)
-    static let privateGroup = PeerSummaryCounterTags(rawValue: 1 << 5)
-    static let bot = PeerSummaryCounterTags(rawValue: 1 << 6)
-    static let channel = PeerSummaryCounterTags(rawValue: 1 << 7)
-    static let publicGroup = PeerSummaryCounterTags(rawValue: 1 << 8)
+    static let contact = PeerSummaryCounterTags(rawValue: 1 << 3)
+    static let nonContact = PeerSummaryCounterTags(rawValue: 1 << 4)
+    static let group = PeerSummaryCounterTags(rawValue: 1 << 5)
+    static let bot = PeerSummaryCounterTags(rawValue: 1 << 7)
+    static let channel = PeerSummaryCounterTags(rawValue: 1 << 8)
+    
+    static let all: PeerSummaryCounterTags = [
+        .contact,
+        .nonContact,
+        .group,
+        .bot,
+        .channel
+    ]
 }
 
 private enum PreferencesKeyValues: Int32 {
@@ -196,6 +207,9 @@ private enum PreferencesKeyValues: Int32 {
     case secretChatSettings = 17
     case walletCollection = 18
     case contentSettings = 19
+    case chatListFilters = 20
+    case peersNearby = 21
+    case chatListFiltersFeaturedState = 22
 }
 
 public func applicationSpecificPreferencesKey(_ value: Int32) -> ValueBoxKey {
@@ -304,6 +318,24 @@ public struct PreferencesKeys {
     public static let contentSettings: ValueBoxKey = {
         let key = ValueBoxKey(length: 4)
         key.setInt32(0, value: PreferencesKeyValues.contentSettings.rawValue)
+        return key
+    }()
+    
+    public static let chatListFilters: ValueBoxKey = {
+        let key = ValueBoxKey(length: 4)
+        key.setInt32(0, value: PreferencesKeyValues.chatListFilters.rawValue)
+        return key
+    }()
+    
+    public static let peersNearby: ValueBoxKey = {
+        let key = ValueBoxKey(length: 4)
+        key.setInt32(0, value: PreferencesKeyValues.peersNearby.rawValue)
+        return key
+    }()
+    
+    public static let chatListFiltersFeaturedState: ValueBoxKey = {
+        let key = ValueBoxKey(length: 4)
+        key.setInt32(0, value: PreferencesKeyValues.chatListFiltersFeaturedState.rawValue)
         return key
     }()
 }

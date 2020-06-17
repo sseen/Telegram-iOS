@@ -253,6 +253,10 @@ public final class AccountViewTracker {
     private var nextUpdatedViewCountDisposableId: Int32 = 0
     private var updatedViewCountDisposables = DisposableDict<Int32>()
     
+    private var updatedReactionsMessageIdsAndTimestamps: [MessageId: Int32] = [:]
+    private var nextUpdatedReactionsDisposableId: Int32 = 0
+    private var updatedReactionsDisposables = DisposableDict<Int32>()
+    
     private var updatedSeenLiveLocationMessageIdsAndTimestamps: [MessageId: Int32] = [:]
     private var nextSeenLiveLocationDisposableId: Int32 = 0
     private var seenLiveLocationDisposables = DisposableDict<Int32>()
@@ -279,12 +283,14 @@ public final class AccountViewTracker {
     
     private let externallyUpdatedPeerIdDisposable = MetaDisposable()
     
+    public let chatListPreloadItems = Promise<[ChatHistoryPreloadItem]>([])
+    
     init(account: Account) {
         self.account = account
         
         self.historyViewStateValidationContexts = HistoryViewStateValidationContexts(queue: self.queue, postbox: account.postbox, network: account.network, accountPeerId: account.peerId)
         
-        self.chatHistoryPreloadManager = ChatHistoryPreloadManager(postbox: account.postbox, network: account.network, accountPeerId: account.peerId, networkState: account.networkState)
+        self.chatHistoryPreloadManager = ChatHistoryPreloadManager(postbox: account.postbox, network: account.network, accountPeerId: account.peerId, networkState: account.networkState, preloadItemsSignal: self.chatListPreloadItems.get() |> distinctUntilChanged)
         
         self.externallyUpdatedPeerIdDisposable.set((account.stateManager.externallyUpdatedPeerIds
         |> deliverOn(self.queue)).start(next: { [weak self] peerIds in
@@ -301,6 +307,7 @@ public final class AccountViewTracker {
     
     deinit {
         self.updatedViewCountDisposables.dispose()
+        self.updatedReactionsDisposables.dispose()
         self.externallyUpdatedPeerIdDisposable.dispose()
     }
     
@@ -360,10 +367,7 @@ public final class AccountViewTracker {
                                 return account.postbox.transaction { transaction -> Void in
                                     if let webpage = webpage {
                                         transaction.updateMessage(messageId, update: { currentMessage in
-                                            var storeForwardInfo: StoreMessageForwardInfo?
-                                            if let forwardInfo = currentMessage.forwardInfo {
-                                                storeForwardInfo = StoreMessageForwardInfo(authorId: forwardInfo.author?.id, sourceId: forwardInfo.source?.id, sourceMessageId: forwardInfo.sourceMessageId, date: forwardInfo.date, authorSignature: forwardInfo.authorSignature)
-                                            }
+                                            let storeForwardInfo = currentMessage.forwardInfo.flatMap(StoreMessageForwardInfo.init)
                                             var media = currentMessage.media
                                             for i in 0 ..< media.count {
                                                 if let _ = media[i] as? TelegramMediaWebpage {
@@ -400,6 +404,7 @@ public final class AccountViewTracker {
     }
     
     private func updatePolls(viewId: Int32, messageIds: Set<MessageId>, messages: [MessageId: Message]) {
+        let queue = self.queue
         self.queue.async {
             var addedMessageIds: [MessageId] = []
             var removedMessageIds: [MessageId] = []
@@ -444,13 +449,59 @@ public final class AccountViewTracker {
             if let account = self.account {
                 for messageId in addedMessageIds {
                     if self.pollDisposables[messageId] == nil {
-                        var signal: Signal<Never, NoError> = fetchPoll(account: account, messageId: messageId)
-                        |> ignoreValues
-                        signal = (signal |> then(
-                            .complete()
-                            |> delay(30.0, queue: Queue.concurrentDefaultQueue())
-                        )) |> restart
-                        self.pollDisposables[messageId] = signal.start()
+                        var deadlineTimer: Signal<Bool, NoError> = .single(false)
+                        
+                        if let message = messages[messageId] {
+                            for media in message.media {
+                                if let poll = media as? TelegramMediaPoll {
+                                    if let _ = poll.deadlineTimeout, message.id.namespace == Namespaces.Message.Cloud {
+                                        let startDate: Int32
+                                        if let forwardInfo = message.forwardInfo {
+                                            startDate = forwardInfo.date
+                                        } else {
+                                            startDate = message.timestamp
+                                        }
+                                        let timestamp = Int32(CFAbsoluteTimeGetCurrent() + NSTimeIntervalSince1970)
+                                        let remainingTime = timestamp - startDate - 1
+                                        
+                                        if remainingTime > 0 {
+                                            deadlineTimer = .single(false)
+                                            |> then(
+                                                .single(true)
+                                                |> suspendAwareDelay(Double(remainingTime), queue: queue)
+                                            )
+                                        } else {
+                                            deadlineTimer = .single(true)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        let pollSignal: Signal<Never, NoError> = deadlineTimer
+                        |> distinctUntilChanged
+                        |> mapToSignal { reachedDeadline -> Signal<Never, NoError> in
+                            if reachedDeadline {
+                                var signal = fetchPoll(account: account, messageId: messageId)
+                                |> ignoreValues
+                                signal = (signal |> then(
+                                    .complete()
+                                    |> delay(0.5, queue: Queue.concurrentDefaultQueue())
+                                ))
+                                |> restart
+                                return signal
+                            } else {
+                                var signal = fetchPoll(account: account, messageId: messageId)
+                                |> ignoreValues
+                                signal = (signal |> then(
+                                    .complete()
+                                    |> delay(30.0, queue: Queue.concurrentDefaultQueue())
+                                ))
+                                |> restart
+                                return signal
+                            }
+                        }
+                        self.pollDisposables[messageId] = pollSignal.start()
                     } else {
                         assertionFailure()
                     }
@@ -549,10 +600,7 @@ public final class AccountViewTracker {
                                                 for i in 0 ..< messageIds.count {
                                                     if i < viewCounts.count {
                                                         transaction.updateMessage(messageIds[i], update: { currentMessage in
-                                                            var storeForwardInfo: StoreMessageForwardInfo?
-                                                            if let forwardInfo = currentMessage.forwardInfo {
-                                                                storeForwardInfo = StoreMessageForwardInfo(authorId: forwardInfo.author?.id, sourceId: forwardInfo.source?.id, sourceMessageId: forwardInfo.sourceMessageId, date: forwardInfo.date, authorSignature: forwardInfo.authorSignature)
-                                                            }
+                                                            let storeForwardInfo = currentMessage.forwardInfo.flatMap(StoreMessageForwardInfo.init)
                                                             var attributes = currentMessage.attributes
                                                             loop: for j in 0 ..< attributes.count {
                                                                 if let attribute = attributes[j] as? ViewCountMessageAttribute {
@@ -586,6 +634,89 @@ public final class AccountViewTracker {
                 }
             }
         }
+    }
+    
+    public func updateReactionsForMessageIds(messageIds: Set<MessageId>) {
+        /*self.queue.async {
+            var addedMessageIds: [MessageId] = []
+            let timestamp = Int32(CFAbsoluteTimeGetCurrent())
+            for messageId in messageIds {
+                let messageTimestamp = self.updatedReactionsMessageIdsAndTimestamps[messageId]
+                if messageTimestamp == nil || messageTimestamp! < timestamp - 5 * 60 {
+                    self.updatedReactionsMessageIdsAndTimestamps[messageId] = timestamp
+                    addedMessageIds.append(messageId)
+                }
+            }
+            if !addedMessageIds.isEmpty {
+                for (peerId, messageIds) in messagesIdsGroupedByPeerId(Set(addedMessageIds)) {
+                    let disposableId = self.nextUpdatedReactionsDisposableId
+                    self.nextUpdatedReactionsDisposableId += 1
+                    
+                    if let account = self.account {
+                        let signal = (account.postbox.transaction { transaction -> Signal<Void, NoError> in
+                            if let peer = transaction.getPeer(peerId), let inputPeer = apiInputPeer(peer) {
+                                return account.network.request(Api.functions.messages.getMessagesReactions(peer: inputPeer, id: messageIds.map { $0.id }))
+                                |> map(Optional.init)
+                                |> `catch` { _ -> Signal<Api.Updates?, NoError> in
+                                    return .single(nil)
+                                }
+                                |> mapToSignal { updates -> Signal<Void, NoError> in
+                                    guard let updates = updates else {
+                                        return .complete()
+                                    }
+                                    return account.postbox.transaction { transaction -> Void in
+                                        let updateList: [Api.Update]
+                                        switch updates {
+                                        case let .updates(updates, _, _, _, _):
+                                            updateList = updates
+                                        case let .updatesCombined(updates, _, _, _, _, _):
+                                            updateList = updates
+                                        case let .updateShort(update, _):
+                                            updateList = [update]
+                                        default:
+                                            updateList = []
+                                        }
+                                        for update in updateList {
+                                            switch update {
+                                            case let .updateMessageReactions(peer, msgId, reactions):
+                                                transaction.updateMessage(MessageId(peerId: peer.peerId, namespace: Namespaces.Message.Cloud, id: msgId), update: { currentMessage in
+                                                    
+                                                    let updatedReactions = ReactionsMessageAttribute(apiReactions: reactions)
+                                                    
+                                                    let storeForwardInfo = currentMessage.forwardInfo.flatMap(StoreMessageForwardInfo.init)
+                                                    var attributes = currentMessage.attributes
+                                                    loop: for j in 0 ..< attributes.count {
+                                                        if let attribute = attributes[j] as? ReactionsMessageAttribute {
+                                                            if updatedReactions.reactions == attribute.reactions {
+                                                                return .skip
+                                                            }
+                                                            attributes[j] = updatedReactions
+                                                            break loop
+                                                        }
+                                                    }
+                                                    return .update(StoreMessage(id: currentMessage.id, globallyUniqueId: currentMessage.globallyUniqueId, groupingKey: currentMessage.groupingKey, timestamp: currentMessage.timestamp, flags: StoreMessageFlags(currentMessage.flags), tags: currentMessage.tags, globalTags: currentMessage.globalTags, localTags: currentMessage.localTags, forwardInfo: storeForwardInfo, authorId: currentMessage.author?.id, text: currentMessage.text, attributes: attributes, media: currentMessage.media))
+                                                })
+                                            default:
+                                                break
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                return .complete()
+                            }
+                        }
+                        |> switchToLatest)
+                        |> afterDisposed { [weak self] in
+                            self?.queue.async {
+                                self?.updatedReactionsDisposables.set(nil, forKey: disposableId)
+                            }
+                        }
+                        self.updatedReactionsDisposables.set(signal.start(), forKey: disposableId)
+                    }
+                }
+            }
+        }*/
     }
     
     public func updateSeenLiveLocationForMessageIds(messageIds: Set<MessageId>) {
@@ -1064,7 +1195,7 @@ public final class AccountViewTracker {
         }
     }
     
-    public func aroundMessageHistoryViewForLocation(_ chatLocation: ChatLocation, index: MessageHistoryAnchorIndex, anchorIndex: MessageHistoryAnchorIndex, count: Int, fixedCombinedReadStates: MessageHistoryViewReadState?, tagMask: MessageTags? = nil, orderStatistics: MessageHistoryViewOrderStatistics = [], additionalData: [AdditionalMessageHistoryViewData] = []) -> Signal<(MessageHistoryView, ViewUpdateType, InitialMessageHistoryData?), NoError> {
+    public func aroundMessageHistoryViewForLocation(_ chatLocation: ChatLocation, index: MessageHistoryAnchorIndex, anchorIndex: MessageHistoryAnchorIndex, count: Int, clipHoles: Bool = true, fixedCombinedReadStates: MessageHistoryViewReadState?, tagMask: MessageTags? = nil, orderStatistics: MessageHistoryViewOrderStatistics = [], additionalData: [AdditionalMessageHistoryViewData] = []) -> Signal<(MessageHistoryView, ViewUpdateType, InitialMessageHistoryData?), NoError> {
         if let account = self.account {
             let inputAnchor: HistoryViewInputAnchor
             switch index {
@@ -1075,7 +1206,7 @@ public final class AccountViewTracker {
                 case let .message(index):
                     inputAnchor = .index(index)
             }
-            let signal = account.postbox.aroundMessageHistoryViewForLocation(chatLocation, anchor: inputAnchor, count: count, fixedCombinedReadStates: fixedCombinedReadStates, topTaggedMessageIdNamespaces: [Namespaces.Message.Cloud], tagMask: tagMask, namespaces: .not(Namespaces.Message.allScheduled), orderStatistics: orderStatistics, additionalData: wrappedHistoryViewAdditionalData(chatLocation: chatLocation, additionalData: additionalData))
+            let signal = account.postbox.aroundMessageHistoryViewForLocation(chatLocation, anchor: inputAnchor, count: count, clipHoles: clipHoles, fixedCombinedReadStates: fixedCombinedReadStates, topTaggedMessageIdNamespaces: [Namespaces.Message.Cloud], tagMask: tagMask, namespaces: .not(Namespaces.Message.allScheduled), orderStatistics: orderStatistics, additionalData: wrappedHistoryViewAdditionalData(chatLocation: chatLocation, additionalData: additionalData))
             return wrappedMessageHistorySignal(chatLocation: chatLocation, signal: signal, addHoleIfNeeded: false)
         } else {
             return .never()
@@ -1330,7 +1461,7 @@ public final class AccountViewTracker {
         })
     }
     
-    public func tailChatListView(groupId: PeerGroupId, filterPredicate: ((Peer, PeerNotificationSettings?, Bool) -> Bool)? = nil, count: Int) -> Signal<(ChatListView, ViewUpdateType), NoError> {
+    public func tailChatListView(groupId: PeerGroupId, filterPredicate: ChatListFilterPredicate? = nil, count: Int) -> Signal<(ChatListView, ViewUpdateType), NoError> {
         if let account = self.account {
             return self.wrappedChatListView(signal: account.postbox.tailChatListView(groupId: groupId, filterPredicate: filterPredicate, count: count, summaryComponents: ChatListEntrySummaryComponents(tagSummary: ChatListEntryMessageTagSummaryComponent(tag: .unseenPersonalMessage, namespace: Namespaces.Message.Cloud), actionsSummary: ChatListEntryPendingMessageActionsSummaryComponent(type: PendingMessageActionType.consumeUnseenPersonalMessage, namespace: Namespaces.Message.Cloud))))
         } else {
@@ -1338,7 +1469,7 @@ public final class AccountViewTracker {
         }
     }
     
-    public func aroundChatListView(groupId: PeerGroupId, filterPredicate: ((Peer, PeerNotificationSettings?, Bool) -> Bool)? = nil, index: ChatListIndex, count: Int) -> Signal<(ChatListView, ViewUpdateType), NoError> {
+    public func aroundChatListView(groupId: PeerGroupId, filterPredicate: ChatListFilterPredicate? = nil, index: ChatListIndex, count: Int) -> Signal<(ChatListView, ViewUpdateType), NoError> {
         if let account = self.account {
             return self.wrappedChatListView(signal: account.postbox.aroundChatListView(groupId: groupId, filterPredicate: filterPredicate, index: index, count: count, summaryComponents: ChatListEntrySummaryComponents(tagSummary: ChatListEntryMessageTagSummaryComponent(tag: .unseenPersonalMessage, namespace: Namespaces.Message.Cloud), actionsSummary: ChatListEntryPendingMessageActionsSummaryComponent(type: PendingMessageActionType.consumeUnseenPersonalMessage, namespace: Namespaces.Message.Cloud))))
         } else {

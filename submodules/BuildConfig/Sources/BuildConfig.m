@@ -72,7 +72,7 @@ API_AVAILABLE(ios(10))
     NSData * _Nullable _bundleData;
     int32_t _apiId;
     NSString * _Nonnull _apiHash;
-    NSString * _Nullable _hockeyAppId;
+    NSString * _Nullable _appCenterId;
     NSMutableDictionary * _Nonnull _dataDict;
 }
 
@@ -129,7 +129,7 @@ API_AVAILABLE(ios(10))
     if (self != nil) {
         _apiId = APP_CONFIG_API_ID;
         _apiHash = @(APP_CONFIG_API_HASH);
-        _hockeyAppId = @(APP_CONFIG_HOCKEYAPP_ID);
+        _appCenterId = @(APP_CONFIG_APP_CENTER_ID);
         
         _dataDict = [[NSMutableDictionary alloc] init];
         
@@ -146,6 +146,8 @@ API_AVAILABLE(ios(10))
         dataDict[@"device_token"] = [appToken base64EncodedStringWithOptions:0];
         dataDict[@"device_token_type"] = @"voip";
     }
+    float tzOffset = ([[NSTimeZone systemTimeZone] secondsFromGMT] / 3600.0);
+    dataDict[@"tz_offset"] = @((int)tzOffset);
     if (signatureDict != nil) {
         for (id<NSCopying> key in signatureDict.allKeys) {
             dataDict[key] = signatureDict[key];
@@ -163,8 +165,8 @@ API_AVAILABLE(ios(10))
     return _apiHash;
 }
 
-- (NSString * _Nullable)hockeyAppId {
-    return _hockeyAppId;
+- (NSString * _Nullable)appCenterId {
+    return _appCenterId;
 }
 
 - (bool)isInternalBuild {

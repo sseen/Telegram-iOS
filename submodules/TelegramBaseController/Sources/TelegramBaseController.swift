@@ -72,7 +72,7 @@ open class TelegramBaseController: ViewController, KeyShortcutResponder {
     public var tempVoicePlaylistEnded: (() -> Void)?
     public var tempVoicePlaylistItemChanged: ((SharedMediaPlaylistItem?, SharedMediaPlaylistItem?) -> Void)?
     
-    private var mediaAccessoryPanel: (MediaNavigationAccessoryPanel, MediaManagerPlayerType)?
+    public var mediaAccessoryPanel: (MediaNavigationAccessoryPanel, MediaManagerPlayerType)?
     
     private var locationBroadcastMode: LocationBroadcastNavigationAccessoryPanelMode?
     private var locationBroadcastPeers: [Peer]?
@@ -97,7 +97,7 @@ open class TelegramBaseController: ViewController, KeyShortcutResponder {
         return super.visualNavigationInsetHeight + self.additionalHeight
     }
     
-    private var additionalHeight: CGFloat {
+    public var additionalHeight: CGFloat {
         var height: CGFloat = 0.0
         if let _ = self.mediaAccessoryPanel {
             height += MediaNavigationAccessoryHeaderNode.minimizedHeight

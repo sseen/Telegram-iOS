@@ -54,8 +54,8 @@ open class GalleryItemNode: ASDisplayNode {
         return .single(nil)
     }
     
-    open func footerContent() -> Signal<GalleryFooterContentNode?, NoError> {
-        return .single(nil)
+    open func footerContent() -> Signal<(GalleryFooterContentNode?, GalleryOverlayContentNode?), NoError> {
+        return .single((nil, nil))
     }
     
     open func navigationStyle() -> Signal<GalleryItemNodeNavigationStyle, NoError> {

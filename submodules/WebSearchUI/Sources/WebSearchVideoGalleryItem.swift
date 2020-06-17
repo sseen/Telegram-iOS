@@ -14,15 +14,22 @@ import TelegramUniversalVideoContent
 import GalleryUI
 
 class WebSearchVideoGalleryItem: GalleryItem {
+    var id: AnyHashable {
+        return self.index
+    }
+    
+    let index: Int
+    
     let context: AccountContext
     let presentationData: PresentationData
     let result: ChatContextResult
     let content: UniversalVideoContent
     let controllerInteraction: WebSearchGalleryControllerInteraction?
     
-    init(context: AccountContext, presentationData: PresentationData, result: ChatContextResult, content: UniversalVideoContent, controllerInteraction: WebSearchGalleryControllerInteraction?) {
+    init(context: AccountContext, presentationData: PresentationData, index: Int, result: ChatContextResult, content: UniversalVideoContent, controllerInteraction: WebSearchGalleryControllerInteraction?) {
         self.context = context
         self.presentationData = presentationData
+        self.index = index
         self.result = result
         self.content = content
         self.controllerInteraction = controllerInteraction
@@ -534,7 +541,7 @@ final class WebSearchVideoGalleryItemNode: ZoomableContentGalleryItemNode {
         }
     }
     
-    override func footerContent() -> Signal<GalleryFooterContentNode?, NoError> {
-        return .single(self.footerContentNode)
+    override func footerContent() -> Signal<(GalleryFooterContentNode?, GalleryOverlayContentNode?), NoError> {
+        return .single((self.footerContentNode, nil))
     }
 }

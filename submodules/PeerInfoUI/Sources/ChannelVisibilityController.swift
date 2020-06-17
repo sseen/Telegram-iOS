@@ -615,7 +615,7 @@ private func channelVisibilityControllerEntries(presentationData: PresentationDa
         }
     } else if let _ = view.peers[view.peerId] as? TelegramGroup {
         switch mode {
-            case .privateLink:
+        case .privateLink:
                 let link = (view.cachedData as? CachedGroupData)?.exportedInvitation?.link
                 let text: String
                 if let link = link {
@@ -640,7 +640,7 @@ private func channelVisibilityControllerEntries(presentationData: PresentationDa
                 if let current = state.selectedType {
                     selectedType = current
                 } else {
-                    selectedType = .publicChannel
+                    selectedType = .privateChannel
                 }
                 
                 let currentAddressName: String
@@ -813,7 +813,7 @@ public enum ChannelVisibilityControllerMode {
     case privateLink
 }
 
-public func channelVisibilityController(context: AccountContext, peerId: PeerId, mode: ChannelVisibilityControllerMode, upgradedToSupergroup: @escaping (PeerId, @escaping () -> Void) -> Void) -> ViewController {
+public func channelVisibilityController(context: AccountContext, peerId: PeerId, mode: ChannelVisibilityControllerMode, upgradedToSupergroup: @escaping (PeerId, @escaping () -> Void) -> Void, onDismissRemoveController: ViewController? = nil) -> ViewController {
     let statePromise = ValuePromise(ChannelVisibilityControllerState(), ignoreRepeated: true)
     let stateValue = Atomic(value: ChannelVisibilityControllerState())
     let updateState: ((ChannelVisibilityControllerState) -> ChannelVisibilityControllerState) -> Void = { f in
@@ -1231,9 +1231,22 @@ public func channelVisibilityController(context: AccountContext, peerId: PeerId,
     }
     
     let controller = ItemListController(context: context, state: signal)
-    dismissImpl = { [weak controller] in
-        controller?.view.endEditing(true)
-        controller?.dismiss()
+    dismissImpl = { [weak controller, weak onDismissRemoveController] in
+        guard let controller = controller else {
+            return
+        }
+        controller.view.endEditing(true)
+        if let onDismissRemoveController = onDismissRemoveController, let navigationController = controller.navigationController {
+            navigationController.setViewControllers(navigationController.viewControllers.filter { c in
+                if c === controller || c === onDismissRemoveController {
+                    return false
+                } else {
+                    return true
+                }
+            }, animated: true)
+        } else {
+            controller.dismiss()
+        }
     }
     dismissInputImpl = { [weak controller] in
         controller?.view.endEditing(true)
@@ -1244,10 +1257,16 @@ public func channelVisibilityController(context: AccountContext, peerId: PeerId,
                 let selectionController = context.sharedContext.makeContactMultiselectionController(ContactMultiselectionControllerParams(context: context, mode: .channelCreation, options: []))
                 (controller.navigationController as? NavigationController)?.replaceAllButRootController(selectionController, animated: true)
                 let _ = (selectionController.result
-                |> deliverOnMainQueue).start(next: { [weak selectionController] peerIds in
+                |> deliverOnMainQueue).start(next: { [weak selectionController] result in
                     guard let selectionController = selectionController, let navigationController = selectionController.navigationController as? NavigationController else {
                         return
                     }
+                    
+                    var peerIds: [ContactListPeerId] = []
+                    if case let .result(peerIdsValue, _) = result {
+                        peerIds = peerIdsValue
+                    }
+                    
                     let filteredPeerIds = peerIds.compactMap({ peerId -> PeerId? in
                         if case let .peer(id) = peerId {
                             return id

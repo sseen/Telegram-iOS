@@ -17,7 +17,6 @@ import AccountContext
 import OverlayStatusController
 import AvatarNode
 import AlertUI
-import PresentationDataUtils
 import TelegramNotices
 import GalleryUI
 import LegacyUI
@@ -39,6 +38,7 @@ import WalletUI
 import PhoneNumberFormat
 import AccountUtils
 import AuthTransferUI
+import Emoji
 
 private let avatarFont = avatarPlaceholderFont(size: 13.0)
 
@@ -115,6 +115,7 @@ private final class SettingsItemArguments {
     let openPhoneNumberChange: () -> Void
     let accountContextAction: (AccountRecordId, ASDisplayNode, ContextGesture?) -> Void
     let openDevices: () -> Void
+    let openFilters: () -> Void
     
     init(
         sharedContext: SharedAccountContext,
@@ -148,7 +149,8 @@ private final class SettingsItemArguments {
         keepPhone: @escaping () -> Void,
         openPhoneNumberChange: @escaping () -> Void,
         accountContextAction: @escaping (AccountRecordId, ASDisplayNode, ContextGesture?) -> Void,
-        openDevices: @escaping () -> Void
+        openDevices: @escaping () -> Void,
+        openFilters: @escaping () -> Void
     ) {
         self.sharedContext = sharedContext
         self.avatarAndNameInfoContext = avatarAndNameInfoContext
@@ -182,6 +184,7 @@ private final class SettingsItemArguments {
         self.openPhoneNumberChange = openPhoneNumberChange
         self.accountContextAction = accountContextAction
         self.openDevices = openDevices
+        self.openFilters = openFilters
     }
 }
 
@@ -212,6 +215,8 @@ private indirect enum SettingsEntry: ItemListNodeEntry {
     
     case devices(PresentationTheme, UIImage?, String, String)
     
+    case filters(PresentationTheme, UIImage?, String, String)
+    
     case savedMessages(PresentationTheme, UIImage?, String)
     case recentCalls(PresentationTheme, UIImage?, String)
     case stickers(PresentationTheme, UIImage?, String, String, [ArchivedStickerPackItem]?)
@@ -241,7 +246,7 @@ private indirect enum SettingsEntry: ItemListNodeEntry {
             return SettingsSection.accounts.rawValue
         case .proxy:
             return SettingsSection.proxy.rawValue
-        case .devices:
+        case .devices, .filters:
             return SettingsSection.media.rawValue
         case .savedMessages, .recentCalls, .stickers:
             return SettingsSection.media.rawValue
@@ -286,30 +291,32 @@ private indirect enum SettingsEntry: ItemListNodeEntry {
             return 1006
         case .devices:
             return 1007
-        case .notificationsAndSounds:
+        case .filters:
             return 1008
-        case .privacyAndSecurity:
+        case .notificationsAndSounds:
             return 1009
-        case .dataAndStorage:
+        case .privacyAndSecurity:
             return 1010
-        case .themes:
+        case .dataAndStorage:
             return 1011
-        case .language:
+        case .themes:
             return 1012
-        case .contentStickers:
+        case .language:
             return 1013
+        case .contentStickers:
+            return 1014
         #if ENABLE_WALLET
         case .wallet:
-            return 1014
+            return 1015
         #endif
         case .passport:
-            return 1015
-        case .watch:
             return 1016
-        case .askAQuestion:
+        case .watch:
             return 1017
-        case .faq:
+        case .askAQuestion:
             return 1018
+        case .faq:
+            return 1019
         }
     }
     
@@ -403,6 +410,12 @@ private indirect enum SettingsEntry: ItemListNodeEntry {
                 }
             case let .devices(lhsTheme, lhsImage, lhsText, lhsValue):
                 if case let .devices(rhsTheme, rhsImage, rhsText, rhsValue) = rhs, lhsTheme === rhsTheme, lhsImage === rhsImage, lhsText == rhsText, lhsValue == rhsValue {
+                    return true
+                } else {
+                    return false
+                }
+            case let .filters(lhsTheme, lhsImage, lhsText, lhsValue):
+                if case let .filters(rhsTheme, rhsImage, rhsText, rhsValue) = rhs, lhsTheme === rhsTheme, lhsImage === rhsImage, lhsText == rhsText, lhsValue == rhsValue {
                     return true
                 } else {
                     return false
@@ -568,6 +581,10 @@ private indirect enum SettingsEntry: ItemListNodeEntry {
                 return ItemListDisclosureItem(presentationData: presentationData, icon: image, title: text, label: value, sectionId: ItemListSectionId(self.section), style: .blocks, action: {
                     arguments.openDevices()
                 })
+            case let .filters(theme, image, text, value):
+                return ItemListDisclosureItem(presentationData: presentationData, icon: image, title: text, label: value, sectionId: ItemListSectionId(self.section), style: .blocks, action: {
+                    arguments.openFilters()
+                })
             case let .savedMessages(theme, image, text):
                 return ItemListDisclosureItem(presentationData: presentationData, icon: image, title: text, label: "", sectionId: ItemListSectionId(self.section), style: .blocks, action: {
                     arguments.openSavedMessages()
@@ -636,7 +653,7 @@ private struct SettingsState: Equatable {
     var isSearching: Bool
 }
 
-private func settingsEntries(account: Account, presentationData: PresentationData, state: SettingsState, view: PeerView, proxySettings: ProxySettings, notifyExceptions: NotificationExceptionsList?, notificationsAuthorizationStatus: AccessType, notificationsWarningSuppressed: Bool, unreadTrendingStickerPacks: Int, archivedPacks: [ArchivedStickerPackItem]?, privacySettings: AccountPrivacySettings?, hasWallet: Bool, hasPassport: Bool, hasWatchApp: Bool, accountsAndPeers: [(Account, Peer, Int32)], inAppNotificationSettings: InAppNotificationSettings, experimentalUISettings: ExperimentalUISettings, displayPhoneNumberConfirmation: Bool, otherSessionCount: Int, enableQRLogin: Bool) -> [SettingsEntry] {
+private func settingsEntries(account: Account, presentationData: PresentationData, state: SettingsState, view: PeerView, proxySettings: ProxySettings, notifyExceptions: NotificationExceptionsList?, notificationsAuthorizationStatus: AccessType, notificationsWarningSuppressed: Bool, unreadTrendingStickerPacks: Int, archivedPacks: [ArchivedStickerPackItem]?, privacySettings: AccountPrivacySettings?, hasWallet: Bool, hasPassport: Bool, hasWatchApp: Bool, accountsAndPeers: [(Account, Peer, Int32)], inAppNotificationSettings: InAppNotificationSettings, experimentalUISettings: ExperimentalUISettings, displayPhoneNumberConfirmation: Bool, otherSessionCount: Int, enableQRLogin: Bool, enableFilters: Bool) -> [SettingsEntry] {
     var entries: [SettingsEntry] = []
     
     if let peer = peerViewMainPeer(view) as? TelegramUser {
@@ -689,6 +706,9 @@ private func settingsEntries(account: Account, presentationData: PresentationDat
         } else {
             entries.append(.devices(presentationData.theme, UIImage(bundleImageName: "Settings/MenuIcons/Sessions")?.precomposed(), presentationData.strings.Settings_Devices, otherSessionCount == 0 ? "" : "\(otherSessionCount + 1)"))
         }
+        if enableFilters {
+            entries.append(.filters(presentationData.theme, UIImage(bundleImageName: "Settings/MenuIcons/ChatListFilters")?.precomposed(), presentationData.strings.Settings_ChatFolders, ""))
+        }
         
         let notificationsWarning = shouldDisplayNotificationsPermissionWarning(status: notificationsAuthorizationStatus, suppressed:  notificationsWarningSuppressed)
         entries.append(.notificationsAndSounds(presentationData.theme, PresentationResourcesSettings.notifications, presentationData.strings.Settings_NotificationsAndSounds, notifyExceptions, notificationsWarning))
@@ -723,7 +743,7 @@ public protocol SettingsController: class {
     func updateContext(context: AccountContext)
 }
 
-private final class SettingsControllerImpl: ItemListController, SettingsController, TabBarContainedController {
+private final class SettingsControllerImpl: ItemListController, SettingsController {
     let sharedContext: SharedAccountContext
     let contextValue: Promise<AccountContext>
     var accountsAndPeersValue: ((Account, Peer)?, [(Account, Peer, Int32)])?
@@ -731,8 +751,6 @@ private final class SettingsControllerImpl: ItemListController, SettingsControll
     
     var switchToAccount: ((AccountRecordId) -> Void)?
     var addAccount: (() -> Void)?
-    
-    weak var switchController: TabBarAccountSwitchController?
     
     override var navigationBarRequiresEntireLayoutUpdate: Bool {
         return false
@@ -752,6 +770,8 @@ private final class SettingsControllerImpl: ItemListController, SettingsControll
         
         super.init(presentationData: ItemListPresentationData(presentationData), updatedPresentationData: updatedPresentationData |> map(ItemListPresentationData.init(_:)), state: state, tabBarItem: tabBarItem)
         
+        self.tabBarItemContextActionType = .always
+        
         self.accountsAndPeersDisposable = (accountsAndPeers
         |> deliverOnMainQueue).start(next: { [weak self] value in
             self?.accountsAndPeersValue = value
@@ -770,20 +790,98 @@ private final class SettingsControllerImpl: ItemListController, SettingsControll
         //self.contextValue.set(.single(context))
     }
     
-    func presentTabBarPreviewingController(sourceNodes: [ASDisplayNode]) {
+    override public func tabBarItemContextAction(sourceNode: ContextExtractedContentContainingNode, gesture: ContextGesture) {
         guard let (maybePrimary, other) = self.accountsAndPeersValue, let primary = maybePrimary else {
             return
         }
-        let controller = TabBarAccountSwitchController(sharedContext: self.sharedContext, accounts: (primary, other), canAddAccounts: other.count + 1 < maximumNumberOfAccounts, switchToAccount: { [weak self] id in
-            self?.switchToAccount?(id)
-        }, addAccount: { [weak self] in
-            self?.addAccount?()
-        }, sourceNodes: sourceNodes)
-        self.switchController = controller
-        self.sharedContext.mainWindow?.present(controller, on: .root)
+        
+        let presentationData = self.sharedContext.currentPresentationData.with { $0 }
+        let strings = presentationData.strings
+        
+        var items: [ContextMenuItem] = []
+        if other.count + 1 < maximumNumberOfAccounts {
+            items.append(.action(ContextMenuActionItem(text: strings.Settings_AddAccount, icon: { theme in
+                return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Add"), color: theme.contextMenu.primaryColor)
+            }, action: { [weak self] _, f in
+                guard let strongSelf = self else {
+                    return
+                }
+                strongSelf.addAccount?()
+                f(.dismissWithoutContent)
+            })))
+        }
+        
+        func accountIconSignal(account: Account, peer: Peer, size: CGSize) -> Signal<UIImage?, NoError> {
+            let iconSignal: Signal<UIImage?, NoError>
+            if let signal = peerAvatarImage(account: account, peerReference: PeerReference(peer), authorOfMessage: nil, representation: peer.profileImageRepresentations.first, displayDimensions: size, inset: 0.0, emptyColor: nil, synchronousLoad: false) {
+                iconSignal = signal
+                |> map { imageVersions -> UIImage? in
+                    return imageVersions?.0
+                }
+            } else {
+                let peerId = peer.id
+                var displayLetters = peer.displayLetters
+                if displayLetters.count == 2 && displayLetters[0].isSingleEmoji && displayLetters[1].isSingleEmoji {
+                    displayLetters = [displayLetters[0]]
+                }
+                iconSignal = Signal { subscriber in
+                    let image = generateImage(size, rotatedContext: { size, context in
+                        context.clear(CGRect(origin: CGPoint(), size: size))
+                        drawPeerAvatarLetters(context: context, size: CGSize(width: size.width, height: size.height), font: avatarFont, letters: displayLetters, peerId: peerId)
+                    })?.withRenderingMode(.alwaysOriginal)
+                    
+                    subscriber.putNext(image)
+                    subscriber.putCompletion()
+                    return EmptyDisposable
+                }
+            }
+            return iconSignal
+        }
+        
+        let avatarSize = CGSize(width: 28.0, height: 28.0)
+        
+        items.append(.action(ContextMenuActionItem(text: primary.1.displayTitle(strings: strings, displayOrder: presentationData.nameDisplayOrder), icon: { _ in nil }, iconSource: ContextMenuActionItemIconSource(size: avatarSize, signal: accountIconSignal(account: primary.0, peer: primary.1, size: avatarSize)), action: { _, f in
+            f(.default)
+        })))
+        
+        if !other.isEmpty {
+            items.append(.separator)
+        }
+        
+        for account in other {
+            let id = account.0.id
+            items.append(.action(ContextMenuActionItem(text: account.1.displayTitle(strings: strings, displayOrder: presentationData.nameDisplayOrder), badge: account.2 != 0 ? ContextMenuActionBadge(value: "\(account.2)", color: .accent) : nil, icon: { _ in nil }, iconSource: ContextMenuActionItemIconSource(size: avatarSize, signal: accountIconSignal(account: account.0, peer: account.1, size: avatarSize)), action: { [weak self] _, f in
+                guard let strongSelf = self else {
+                    return
+                }
+                strongSelf.switchToAccount?(id)
+                f(.dismissWithoutContent)
+            })))
+        }
+        
+        let controller = ContextController(account: primary.0, presentationData: presentationData, source: .extracted(SettingsTabBarContextExtractedContentSource(controller: self, sourceNode: sourceNode)), items: .single(items), reactionItems: [], recognizer: nil, gesture: gesture)
+        self.sharedContext.mainWindow?.presentInGlobalOverlay(controller)
+    }
+}
+
+private final class SettingsTabBarContextExtractedContentSource: ContextExtractedContentSource {
+    let keepInPlace: Bool = true
+    let ignoreContentTouches: Bool = true
+    
+    private let controller: ViewController
+    private let sourceNode: ContextExtractedContentContainingNode
+    
+    init(controller: ViewController, sourceNode: ContextExtractedContentContainingNode) {
+        self.controller = controller
+        self.sourceNode = sourceNode
     }
     
-    func updateTabBarPreviewingControllerPresentation(_ update: TabBarContainedControllerPresentationUpdate) {
+    func takeView() -> ContextControllerTakeViewInfo? {
+        return ContextControllerTakeViewInfo(contentContainingNode: self.sourceNode, contentAreaInScreenSpace: UIScreen.main.bounds)
+    }
+    
+    func putBack() -> ContextControllerPutBackViewInfo? {
+        return ContextControllerPutBackViewInfo(contentAreaInScreenSpace: UIScreen.main.bounds)
     }
 }
 
@@ -837,6 +935,7 @@ public func settingsController(context: AccountContext, accountManager: AccountM
     let privacySettings = Promise<AccountPrivacySettings?>(nil)
     
     let enableQRLogin = Promise<Bool>()
+    let enableFilters = Promise<Bool>()
 
     let openFaq: (Promise<ResolvedUrl>, String?) -> Void = { resolvedUrl, customAnchor in
         let _ = (contextValue.get()
@@ -1133,17 +1232,28 @@ public func settingsController(context: AccountContext, accountManager: AccountM
             gesture?.cancel()
         }
     }, openDevices: {
-        let _ = (combineLatest(queue: .mainQueue(),
-            activeSessionsContextAndCount.get(),
-            enableQRLogin.get()
-        )
-        |> take(1)).start(next: { activeSessionsContextAndCount, enableQRLogin in
-            let (activeSessionsContext, count, webSessionsContext) = activeSessionsContextAndCount
-            if count == 0 && enableQRLogin {
-                pushControllerImpl?(AuthDataTransferSplashScreen(context: context, activeSessionsContext: activeSessionsContext))
-            } else {
-                pushControllerImpl?(recentSessionsController(context: context, activeSessionsContext: activeSessionsContext, webSessionsContext: webSessionsContext, websitesOnly: false))
-            }
+        let _ = (contextValue.get()
+        |> deliverOnMainQueue
+        |> take(1)).start(next: { context in
+            let _ = (combineLatest(queue: .mainQueue(),
+                activeSessionsContextAndCount.get(),
+                enableQRLogin.get()
+            )
+            |> take(1)).start(next: { activeSessionsContextAndCount, enableQRLogin in
+                let (activeSessionsContext, count, webSessionsContext) = activeSessionsContextAndCount
+                if count == 0 && enableQRLogin {
+                    pushControllerImpl?(AuthDataTransferSplashScreen(context: context, activeSessionsContext: activeSessionsContext))
+                } else {
+                    pushControllerImpl?(recentSessionsController(context: context, activeSessionsContext: activeSessionsContext, webSessionsContext: webSessionsContext, websitesOnly: false))
+                }
+            })
+        })
+    }, openFilters: {
+        let _ = (contextValue.get()
+        |> deliverOnMainQueue
+        |> take(1)).start(next: { context in
+            let controller = chatListFilterPresetListController(context: context, mode: .default)
+            pushControllerImpl?(controller)
         })
     })
     
@@ -1201,7 +1311,7 @@ public func settingsController(context: AccountContext, accountManager: AccountM
                     }
                 }
                 
-                let mixin = TGMediaAvatarMenuMixin(context: legacyController.context, parentController: emptyController, hasSearchButton: true, hasDeleteButton: hasPhotos, hasViewButton: false, personalPhoto: true, saveEditedPhotos: false, saveCapturedMedia: false, signup: false)!
+                let mixin = TGMediaAvatarMenuMixin(context: legacyController.context, parentController: emptyController, hasSearchButton: true, hasDeleteButton: hasPhotos, hasViewButton: false, personalPhoto: true, saveEditedPhotos: false, saveCapturedMedia: false, signup: true)!
                 let _ = currentAvatarMixin.swap(mixin)
                 mixin.requestSearchController = { assetsController in
                     let controller = WebSearchController(context: context, peer: peer, configuration: searchBotsConfiguration, mode: .avatar(initialQuery: nil, completion: { result in
@@ -1408,7 +1518,21 @@ public func settingsController(context: AccountContext, accountManager: AccountM
     }
     enableQRLogin.set(enableQRLoginSignal)
     
-    let signal = combineLatest(queue: Queue.mainQueue(), contextValue.get(), updatedPresentationData, statePromise.get(), peerView, combineLatest(queue: Queue.mainQueue(), preferences, notifyExceptions.get(), notificationsAuthorizationStatus.get(), notificationsWarningSuppressed.get(), privacySettings.get(), displayPhoneNumberConfirmation.get()), combineLatest(featuredStickerPacks, archivedPacks.get()), combineLatest(hasWallet, hasPassport.get(), hasWatchApp, enableQRLogin.get()), accountsAndPeers.get(), activeSessionsContextAndCount.get())
+    let enableFiltersSignal = contextValue.get()
+    |> mapToSignal { context -> Signal<Bool, NoError> in
+        return context.account.postbox.preferencesView(keys: [PreferencesKeys.appConfiguration])
+        |> map { view -> Bool in
+            guard let appConfiguration = view.values[PreferencesKeys.appConfiguration] as? AppConfiguration else {
+                return false
+            }
+            let configuration = ChatListFilteringConfiguration(appConfiguration: appConfiguration)
+            return configuration.isEnabled
+        }
+        |> distinctUntilChanged
+    }
+    enableFilters.set(enableFiltersSignal)
+    
+    let signal = combineLatest(queue: Queue.mainQueue(), contextValue.get(), updatedPresentationData, statePromise.get(), peerView, combineLatest(queue: Queue.mainQueue(), preferences, notifyExceptions.get(), notificationsAuthorizationStatus.get(), notificationsWarningSuppressed.get(), privacySettings.get(), displayPhoneNumberConfirmation.get()), combineLatest(featuredStickerPacks, archivedPacks.get()), combineLatest(hasWallet, hasPassport.get(), hasWatchApp, enableQRLogin.get(), enableFilters.get()), accountsAndPeers.get(), activeSessionsContextAndCount.get())
     |> map { context, presentationData, state, view, preferencesAndExceptions, featuredAndArchived, hasWalletPassportAndWatch, accountsAndPeers, activeSessionsContextAndCount -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let otherSessionCount = activeSessionsContextAndCount.1
 
@@ -1448,8 +1572,8 @@ public func settingsController(context: AccountContext, accountManager: AccountM
             pushControllerImpl?(c)
         }, getNavigationController: getNavigationControllerImpl, exceptionsList: notifyExceptions.get(), archivedStickerPacks: archivedPacks.get(), privacySettings: privacySettings.get(), hasWallet: hasWallet, activeSessionsContext: activeSessionsContextAndCountSignal |> map { $0.0 } |> distinctUntilChanged(isEqual: { $0 === $1 }), webSessionsContext: activeSessionsContextAndCountSignal |> map { $0.2 } |> distinctUntilChanged(isEqual: { $0 === $1 }))
         
-        let (hasWallet, hasPassport, hasWatchApp, enableQRLogin) = hasWalletPassportAndWatch
-        let listState = ItemListNodeState(presentationData: ItemListPresentationData(presentationData), entries: settingsEntries(account: context.account, presentationData: presentationData, state: state, view: view, proxySettings: proxySettings, notifyExceptions: preferencesAndExceptions.1, notificationsAuthorizationStatus: preferencesAndExceptions.2, notificationsWarningSuppressed: preferencesAndExceptions.3, unreadTrendingStickerPacks: unreadTrendingStickerPacks, archivedPacks: featuredAndArchived.1, privacySettings: preferencesAndExceptions.4, hasWallet: hasWallet, hasPassport: hasPassport, hasWatchApp: hasWatchApp, accountsAndPeers: accountsAndPeers.1, inAppNotificationSettings: inAppNotificationSettings, experimentalUISettings: experimentalUISettings, displayPhoneNumberConfirmation: preferencesAndExceptions.5, otherSessionCount: otherSessionCount, enableQRLogin: enableQRLogin), style: .blocks, searchItem: searchItem, initialScrollToItem: ListViewScrollToItem(index: 0, position: .top(-navigationBarSearchContentHeight), animated: false, curve: .Default(duration: 0.0), directionHint: .Up))
+        let (hasWallet, hasPassport, hasWatchApp, enableQRLogin, enableFilters) = hasWalletPassportAndWatch
+        let listState = ItemListNodeState(presentationData: ItemListPresentationData(presentationData), entries: settingsEntries(account: context.account, presentationData: presentationData, state: state, view: view, proxySettings: proxySettings, notifyExceptions: preferencesAndExceptions.1, notificationsAuthorizationStatus: preferencesAndExceptions.2, notificationsWarningSuppressed: preferencesAndExceptions.3, unreadTrendingStickerPacks: unreadTrendingStickerPacks, archivedPacks: featuredAndArchived.1, privacySettings: preferencesAndExceptions.4, hasWallet: hasWallet, hasPassport: hasPassport, hasWatchApp: hasWatchApp, accountsAndPeers: accountsAndPeers.1, inAppNotificationSettings: inAppNotificationSettings, experimentalUISettings: experimentalUISettings, displayPhoneNumberConfirmation: preferencesAndExceptions.5, otherSessionCount: otherSessionCount, enableQRLogin: enableQRLogin, enableFilters: enableFilters), style: .blocks, searchItem: searchItem, initialScrollToItem: ListViewScrollToItem(index: 0, position: .top(-navigationBarSearchContentHeight), animated: false, curve: .Default(duration: 0.0), directionHint: .Up))
         
         return (controllerState, (listState, arguments))
     }
@@ -1457,7 +1581,12 @@ public func settingsController(context: AccountContext, accountManager: AccountM
         actionsDisposable.dispose()
     }
     
-    let icon = UIImage(bundleImageName: "Chat List/Tabs/IconSettings")
+    let icon: UIImage?
+    if useSpecialTabBarIcons() {
+        icon = UIImage(bundleImageName: "Chat List/Tabs/Holiday/IconSettings")
+    } else {
+        icon = UIImage(bundleImageName: "Chat List/Tabs/IconSettings")
+    }
     
     let notificationsFromAllAccounts = accountManager.sharedData(keys: [ApplicationSpecificSharedDataKeys.inAppNotificationSettings])
     |> map { sharedData -> Bool in
@@ -1497,7 +1626,8 @@ public func settingsController(context: AccountContext, accountManager: AccountM
             let inset: CGFloat = 3.0
             if let signal = peerAvatarImage(account: primary.0, peerReference: PeerReference(primary.1), authorOfMessage: nil, representation: primary.1.profileImageRepresentations.first, displayDimensions: size, inset: 3.0, emptyColor: nil, synchronousLoad: false) {
                 return signal
-                |> map { image -> (UIImage, UIImage)? in
+                |> map { imageVersions -> (UIImage, UIImage)? in
+                    let image = imageVersions?.0
                     if let image = image, let selectedImage = generateImage(size, rotatedContext: { size, context in
                         context.clear(CGRect(origin: CGPoint(), size: size))
                         context.translateBy(x: size.width / 2.0, y: size.height / 2.0)
@@ -1515,16 +1645,21 @@ public func settingsController(context: AccountContext, accountManager: AccountM
                 }
             } else {
                 return Signal { subscriber in
+                    var displayLetters = primary.1.displayLetters
+                    if displayLetters.count == 2 && displayLetters[0].isSingleEmoji && displayLetters[1].isSingleEmoji {
+                        displayLetters = [displayLetters[0]]
+                    }
                     let image = generateImage(size, rotatedContext: { size, context in
                         context.clear(CGRect(origin: CGPoint(), size: size))
                         context.translateBy(x: inset, y: inset)
-                        drawPeerAvatarLetters(context: context, size: CGSize(width: size.width - inset * 2.0, height: size.height - inset * 2.0), font: avatarFont, letters: primary.1.displayLetters, peerId: primary.1.id)
+                        
+                        drawPeerAvatarLetters(context: context, size: CGSize(width: size.width - inset * 2.0, height: size.height - inset * 2.0), font: avatarFont, letters: displayLetters, peerId: primary.1.id)
                     })?.withRenderingMode(.alwaysOriginal)
                     
                     let selectedImage = generateImage(size, rotatedContext: { size, context in
                         context.clear(CGRect(origin: CGPoint(), size: size))
                         context.translateBy(x: inset, y: inset)
-                        drawPeerAvatarLetters(context: context, size: CGSize(width: size.width - inset * 2.0, height: size.height - inset * 2.0), font: avatarFont, letters: primary.1.displayLetters, peerId: primary.1.id)
+                        drawPeerAvatarLetters(context: context, size: CGSize(width: size.width - inset * 2.0, height: size.height - inset * 2.0), font: avatarFont, letters: displayLetters, peerId: primary.1.id)
                         context.translateBy(x: -inset, y: -inset)
                         context.setLineWidth(1.0)
                         context.setStrokeColor(primary.2.rootController.tabBar.selectedIconColor.cgColor)
@@ -1793,10 +1928,10 @@ private func accountContextMenuItems(context: AccountContext, logout: @escaping 
     return context.account.postbox.transaction { transaction -> [ContextMenuItem] in
         var items: [ContextMenuItem] = []
         
-        if !transaction.getUnreadChatListPeerIds(groupId: .root).isEmpty {
+        if !transaction.getUnreadChatListPeerIds(groupId: .root, filterPredicate: nil).isEmpty {
             items.append(.action(ContextMenuActionItem(text: strings.ChatList_Context_MarkAllAsRead, icon: { theme in generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/MarkAsRead"), color: theme.contextMenu.primaryColor) }, action: { _, f in
                 let _ = (context.account.postbox.transaction { transaction in
-                    markAllChatsAsReadInteractively(transaction: transaction, viewTracker: context.account.viewTracker, groupId: .root)
+                    markAllChatsAsReadInteractively(transaction: transaction, viewTracker: context.account.viewTracker, groupId: .root, filterPredicate: nil)
                 }
                 |> deliverOnMainQueue).start(completed: {
                     f(.default)

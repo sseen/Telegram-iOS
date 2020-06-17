@@ -4,17 +4,15 @@ import SwiftSignalKit
 import Postbox
 import TelegramCore
 import SyncCore
-#if BUCK
 import MtProtoKit
-#else
-import MtProtoKitDynamic
-#endif
 import TelegramPresentationData
 import TelegramUIPreferences
 import AccountContext
 #if ENABLE_WALLET
 import WalletUrl
 #endif
+
+private let baseTelegramMePaths = ["telegram.me", "t.me", "telegram.dog"]
 
 public enum ParsedInternalPeerUrlParameter {
     case botStart(String)
@@ -284,9 +282,9 @@ private func resolveInternalUrl(account: Account, url: ParsedInternalUrl) -> Sig
                         }
                     } else {
                         if let peer = peer as? TelegramUser, peer.botInfo == nil {
-                            return .peer(peer.id, .chat(textInputState: nil, subject: nil))
+                            return .peer(peer.id, .chat(textInputState: nil, subject: nil, peekData: nil))
                         } else {
-                            return .peer(peer.id, .chat(textInputState: nil, subject: nil))
+                            return .peer(peer.id, .chat(textInputState: nil, subject: nil, peekData: nil))
                         }
                     }
                 } else {
@@ -299,7 +297,7 @@ private func resolveInternalUrl(account: Account, url: ParsedInternalUrl) -> Sig
             }
             |> mapToSignal { peer -> Signal<ResolvedUrl?, NoError> in
                 if let peer = peer {
-                    return .single(.peer(peer.id, .chat(textInputState: nil, subject: nil)))
+                    return .single(.peer(peer.id, .chat(textInputState: nil, subject: nil, peekData: nil)))
                 } else {
                     return .single(.inaccessiblePeer)
                 }
@@ -310,12 +308,12 @@ private func resolveInternalUrl(account: Account, url: ParsedInternalUrl) -> Sig
             }
             |> mapToSignal { peer -> Signal<ResolvedUrl?, NoError> in
                 if let peer = peer {
-                    return .single(.peer(peer.id, .chat(textInputState: nil, subject: .message(messageId))))
+                    return .single(.peer(peer.id, .chat(textInputState: nil, subject: .message(messageId), peekData: nil)))
                 } else {
                     return findChannelById(postbox: account.postbox, network: account.network, channelId: messageId.peerId.id)
                     |> map { foundPeer -> ResolvedUrl? in
                         if let foundPeer = foundPeer {
-                            return .peer(foundPeer.id, .chat(textInputState: nil, subject: .message(messageId)))
+                            return .peer(foundPeer.id, .chat(textInputState: nil, subject: .message(messageId), peekData: nil))
                         } else {
                             return .inaccessiblePeer
                         }
@@ -348,7 +346,6 @@ private func resolveInternalUrl(account: Account, url: ParsedInternalUrl) -> Sig
 
 public func isTelegramMeLink(_ url: String) -> Bool {
     let schemes = ["http://", "https://", ""]
-    let baseTelegramMePaths = ["telegram.me", "t.me"]
     for basePath in baseTelegramMePaths {
         for scheme in schemes {
             let basePrefix = scheme + basePath + "/"
@@ -362,7 +359,6 @@ public func isTelegramMeLink(_ url: String) -> Bool {
 
 public func parseProxyUrl(_ url: String) -> (host: String, port: Int32, username: String?, password: String?, secret: Data?)? {
     let schemes = ["http://", "https://", ""]
-    let baseTelegramMePaths = ["telegram.me", "t.me"]
     for basePath in baseTelegramMePaths {
         for scheme in schemes {
             let basePrefix = scheme + basePath + "/"
@@ -384,7 +380,6 @@ public func parseProxyUrl(_ url: String) -> (host: String, port: Int32, username
 
 public func parseStickerPackUrl(_ url: String) -> String? {
     let schemes = ["http://", "https://", ""]
-    let baseTelegramMePaths = ["telegram.me", "t.me"]
     for basePath in baseTelegramMePaths {
         for scheme in schemes {
             let basePrefix = scheme + basePath + "/"
@@ -406,7 +401,6 @@ public func parseStickerPackUrl(_ url: String) -> String? {
 
 public func parseWallpaperUrl(_ url: String) -> WallpaperUrlParameter? {
     let schemes = ["http://", "https://", ""]
-    let baseTelegramMePaths = ["telegram.me", "t.me"]
     for basePath in baseTelegramMePaths {
         for scheme in schemes {
             let basePrefix = scheme + basePath + "/"
@@ -435,7 +429,6 @@ public func resolveUrlImpl(account: Account, url: String) -> Signal<ResolvedUrl,
     }
     #endif
     let schemes = ["http://", "https://", ""]
-    let baseTelegramMePaths = ["telegram.me", "t.me"]
     for basePath in baseTelegramMePaths {
         for scheme in schemes {
             let basePrefix = scheme + basePath + "/"

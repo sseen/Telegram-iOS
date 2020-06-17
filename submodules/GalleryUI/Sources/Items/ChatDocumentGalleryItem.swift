@@ -12,6 +12,10 @@ import AccountContext
 import RadialStatusNode
 
 class ChatDocumentGalleryItem: GalleryItem {
+    var id: AnyHashable {
+        return self.message.stableId
+    }
+    
     let context: AccountContext
     let presentationData: PresentationData
     let message: Message
@@ -375,8 +379,8 @@ class ChatDocumentGalleryItemNode: ZoomableContentGalleryItemNode, WKNavigationD
         self.statusNodeContainer.layer.animateAlpha(from: 1.0, to: 0.0, duration: 0.15, timingFunction: CAMediaTimingFunctionName.easeIn.rawValue, removeOnCompletion: false)
     }
     
-    override func footerContent() -> Signal<GalleryFooterContentNode?, NoError> {
-        return .single(self.footerContentNode)
+    override func footerContent() -> Signal<(GalleryFooterContentNode?, GalleryOverlayContentNode?), NoError> {
+        return .single((self.footerContentNode, nil))
     }
     
     @objc func statusPressed() {

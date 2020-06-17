@@ -17,6 +17,7 @@ import ShareController
 import OpenInExternalAppUI
 import AppBundle
 import LocalizedPeerData
+import TextSelectionNode
 
 private let deleteImage = generateTintedImage(image: UIImage(bundleImageName: "Chat/Input/Accessory Panels/MessageSelectionTrash"), color: .white)
 private let actionImage = generateTintedImage(image: UIImage(bundleImageName: "Chat/Input/Accessory Panels/MessageSelectionAction"), color: .white)
@@ -168,7 +169,12 @@ final class ChatItemGalleryFooterContentNode: GalleryFooterContentNode, UIScroll
                         self.dateNode.isHidden = true
                         self.backwardButton.isHidden = true
                         self.forwardButton.isHidden = true
-                        self.playbackControlButton.isHidden = true
+                        if status == .Local {
+                            self.playbackControlButton.isHidden = false
+                            self.playbackControlButton.setImage(playImage, for: [])
+                        } else {
+                            self.playbackControlButton.isHidden = true
+                        }
                         self.statusButtonNode.isHidden = false
                         self.statusNode.isHidden = false
                         
@@ -242,7 +248,7 @@ final class ChatItemGalleryFooterContentNode: GalleryFooterContentNode, UIScroll
         }
     }
     
-    init(context: AccountContext, presentationData: PresentationData) {
+    init(context: AccountContext, presentationData: PresentationData, present: @escaping (ViewController, Any?) -> Void = { _, _ in }) {
         self.context = context
         self.presentationData = presentationData
         self.theme = presentationData.theme
@@ -309,12 +315,12 @@ final class ChatItemGalleryFooterContentNode: GalleryFooterContentNode, UIScroll
             }
             return nil
         }
-        self.textNode.tapAttributeAction = { [weak self] attributes in
+        self.textNode.tapAttributeAction = { [weak self] attributes, _ in
             if let strongSelf = self, let action = strongSelf.actionForAttributes(attributes) {
                 strongSelf.performAction?(action)
             }
         }
-        self.textNode.longTapAttributeAction = { [weak self] attributes in
+        self.textNode.longTapAttributeAction = { [weak self] attributes, _ in
             if let strongSelf = self, let action = strongSelf.actionForAttributes(attributes) {
                 strongSelf.openActionOptions?(action)
             }
@@ -1076,7 +1082,7 @@ final class ChatItemGalleryFooterContentNode: GalleryFooterContentNode, UIScroll
                 }
                 let textSize = videoFrameTextNode.updateLayout(CGSize(width: 100.0, height: 100.0))
                 videoFrameTextNode.frame = CGRect(origin: CGPoint(), size: textSize)
-                videoFramePreviewNode.addSubnode(videoFrameTextNode)
+//                videoFramePreviewNode.addSubnode(videoFrameTextNode)
                 
                 self.videoFramePreviewNode = (videoFramePreviewNode, videoFrameTextNode)
                 self.addSubnode(videoFramePreviewNode)

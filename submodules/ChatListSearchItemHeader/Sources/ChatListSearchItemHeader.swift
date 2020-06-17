@@ -19,6 +19,8 @@ public enum ChatListSearchItemHeaderType: Int32 {
     case addToExceptions
     case mapAddress
     case nearbyVenues
+    case chats
+    case chatTypes
 }
 
 public final class ChatListSearchItemHeader: ListViewItemHeader {
@@ -101,6 +103,10 @@ public final class ChatListSearchItemHeaderNode: ListViewItemHeaderNode {
             self.sectionHeaderNode.title = strings.Map_AddressOnMap.uppercased()
         case .nearbyVenues:
             self.sectionHeaderNode.title = strings.Map_PlacesNearby.uppercased()
+        case .chats:
+            self.sectionHeaderNode.title = strings.Cache_ByPeerHeader.uppercased()
+        case .chatTypes:
+            self.sectionHeaderNode.title = strings.ChatList_ChatTypesSection.uppercased()
         }
         
         self.sectionHeaderNode.action = actionTitle
@@ -147,6 +153,10 @@ public final class ChatListSearchItemHeaderNode: ListViewItemHeaderNode {
             self.sectionHeaderNode.title = strings.Map_AddressOnMap.uppercased()
         case .nearbyVenues:
             self.sectionHeaderNode.title = strings.Map_PlacesNearby.uppercased()
+        case .chats:
+            self.sectionHeaderNode.title = strings.Cache_ByPeerHeader.uppercased()
+        case .chatTypes:
+            self.sectionHeaderNode.title = strings.ChatList_ChatTypesSection.uppercased()
         }
         
         self.sectionHeaderNode.action = actionTitle
